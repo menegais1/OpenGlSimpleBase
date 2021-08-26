@@ -632,7 +632,7 @@ CODE
  ================
 
  Q: How to get started?
- A: Read 'PROGRAMMER GUIDE' above. Read examples/README.txt.
+ A: Read 'PROGRAMMER GUIDE' above. Read examples/README.md.
 
  Q: How can I tell whether to dispatch mouse/keyboard to Dear ImGui or to my application?
  A: You should read the 'io.WantCaptureMouse', 'io.WantCaptureKeyboard' and 'io.WantTextInput' flags!

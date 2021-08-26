@@ -16,7 +16,7 @@ public:
 
     static void render(GLFWwindow *window);
 
-//    static void screenSpaceLine(fvec2 p0, fvec2 p1, fvec4 color = fvec4(0, 0, 0, 1));
+//    static void screenSpaceLine(glm::vec2 p0, glm::vec2 p1, fvec4 color = fvec4(0, 0, 0, 1));
 //
 //    static void line(fvec3 p0, fvec3 p1, fvec4 color = fvec4(0, 0, 0, 1));
 

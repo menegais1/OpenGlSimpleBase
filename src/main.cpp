@@ -3,108 +3,228 @@
 #include "Backend/GraphicsLibrary.h"
 #include "Backend/Shader.h"
 #include "FileManagers/FileLoader.h"
-#include "FileManagers/Bitmap/Bitmap.h"
 #include "Backend/Texture2D.h"
-#include "Backend/ObjectGL.h"
-#include <glm/vec3.hpp>
+#include <glm/glm.hpp>
 #include "Callbacks.h"
-#include "IMGui/imgui.h"
+#include "GlobalManager.h"
+#include "FileManagers/ModelLoader.h"
+#include <imgui.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <iostream>
+
+
+#define PI        3.14159265358979323846    /* pi */
+#define PI_2        2 * PI
+int WIDTH = 500, HEIGHT = 500;
 
 Shader defaultShader;
-Texture2D texture1;
-Texture2D texture2;
 unsigned int VAO;
-float t = 0;
-float mouseThreshold = 0;
-float textureScale = 1;
-float brightness = 0;
 glm::vec2 mousePosition;
-int width = 500, height = 500;
+
+float mouseSensitivity = 1;
+float cameraSpeed = 50;
+
+struct Camera : public GameObject {
+public:
+    glm::mat4x4 V;
+    glm::mat4x4 P;
+
+    Camera(glm::vec3 eye, glm::vec3 forward, glm::vec3 up) : eye(eye), forward(forward), up(up) {
+        center = eye + forward;
+        right = glm::cross(forward, up);
+        V = glm::lookAt(eye, center, up);
+        P = glm::perspective(PI / 4.0, (double) WIDTH / HEIGHT, 0.1, 100.0);
+
+        angle = glm::vec2(0, 0);
+        updateCameraCenter();
+    }
+
+    void keyboard(int key, int scancode, int action, int mods) override {
+        float moveSpeed = cameraSpeed * GlobalManager::getInstance()->deltaTime;
+
+        if (key == GLFW_KEY_W) {
+            eye = eye + moveSpeed * forward;
+            center = center + moveSpeed * forward;
+        } else if (key == GLFW_KEY_S) {
+            eye = eye - moveSpeed * forward;
+            center = center - moveSpeed * forward;
+        } else if (key == GLFW_KEY_D) {
+            eye = eye + moveSpeed * right;
+            center = center + moveSpeed * right;
+        } else if (key == GLFW_KEY_A) {
+            eye = eye - moveSpeed * right;
+            center = center - moveSpeed * right;
+        } else if (key == GLFW_KEY_Q) {
+            eye = eye + moveSpeed * up;
+            center = center + moveSpeed * up;
+        } else if (key == GLFW_KEY_E) {
+            eye = eye - moveSpeed * up;
+            center = center - moveSpeed * up;
+        }
+    }
+
+    void mouseButton(int button, int action, int modifier) override {
+        if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+            isDragging = true;
+        } else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE) {
+            isDragging = false;
+        }
+    }
+
+    void updateCameraCenter() {
+        glm::vec3 direction;
+        direction.x = cos(angle.y * PI / 180.0) * cos(angle.x * PI / 180.0);
+        direction.y = sin(angle.x * PI / 180.0);
+        direction.z = sin(angle.y * PI / 180.0) * cos(angle.x * PI / 180.0);
+
+        center = eye + glm::normalize(direction);
+    }
+
+    void mouseMovement(double xpos, double ypos) override {
+        if (isDragging) {
+
+            float xDelta = (xpos - lastMousePosition.x);
+            float yDelta = (ypos - lastMousePosition.y);
+            float xOffset = xDelta * mouseSensitivity;
+            float yOffset = yDelta * mouseSensitivity;
+
+            angle.x += yOffset;
+            angle.y += xOffset;
+
+            if (angle.x >= 89) {
+                angle.x = 89;
+            } else if (angle.x <= -89) {
+                angle.x = -89;
+            }
+
+            updateCameraCenter();
+        }
+        lastMousePosition = glm::vec2(xpos, ypos);
+
+    }
+
+    void update() override {
+        forward = glm::normalize(center - eye);
+        right = glm::normalize(glm::cross(forward, up));
+        V = glm::lookAt(eye, center, up);
+    }
+
+private:
+    bool isDragging = false;
+    glm::vec3 center;
+    glm::vec3 eye;
+    glm::vec2 lastMousePosition;
+    glm::vec2 angle;
+    glm::vec3 up;
+    glm::vec3 forward;
+    glm::vec3 right;
+
+};
+
+
+Camera *camera;
+
+struct Transform {
+    glm::vec3 position;
+    glm::vec3 rotation;
+    glm::vec3 scale;
+
+    Transform(const glm::vec3 &position, const glm::vec3 &rotation, const glm::vec3 &scale) : position(position), rotation(rotation), scale(scale) {}
+};
+
+class MeshRenderer : GameObject {
+public:
+    Transform transform;
+    glm::mat4x4 M;
+    MeshRenderer(Transform transform, std::string fileName) : transform(transform) {
+        ModelLoader::loadPnuModel(FileLoader::getPath(fileName), vertices, indices);
+
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+
+        glBindVertexArray(VAO);
+
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(PnuVertexInput), vertices.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
+
+        // position attribute
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(PnuVertexInput), (void *) offsetof(PnuVertexInput, position));
+        glEnableVertexAttribArray(0);
+
+        glBindVertexArray(0);
+    }
+
+    void update() {
+        transform.rotation.z += 0.01;
+    }
+
+    void render() {
+        if (std::abs(transform.rotation.x) >= 360) transform.rotation.x = (int) transform.rotation.x % 360;
+        if (std::abs(transform.rotation.y) >= 360) transform.rotation.y = (int) transform.rotation.y % 360;
+        if (std::abs(transform.rotation.z) >= 360) transform.rotation.z = (int) transform.rotation.z % 360;
+        auto S = glm::scale(glm::identity<glm::mat4x4>(), transform.scale);
+        auto T = glm::translate(glm::identity<glm::mat4x4>(), transform.position);
+        auto Rx = glm::rotate(glm::identity<glm::mat4x4>(), (float) (transform.rotation.x * PI / 180.0f), glm::vec3(1, 0, 0));
+        auto Ry = glm::rotate(glm::identity<glm::mat4x4>(), (float) (transform.rotation.y * PI / 180.0f), glm::vec3(0, 1, 0));
+        auto Rz = glm::rotate(glm::identity<glm::mat4x4>(), (float) (transform.rotation.z * PI / 180.0f), glm::vec3(0, 0, 1));
+        M = T * Rz * Ry * Rx * S;
+
+        glBindVertexArray(VAO);
+        defaultShader.activateShader();
+        defaultShader.setUniform("MVP", camera->P * camera->V * M);
+        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+
+    }
+
+private:
+    unsigned int VBO, EBO, VAO;
+    std::vector<PnuVertexInput> vertices;
+    std::vector<uint32_t> indices;
+};
 
 void init() {
 
     unsigned int vertex = Shader::createVertexShader(FileLoader::getPath("Resources/Shaders/DefaultVertex.glsl"));
     unsigned int fragment = Shader::createFragmentShader(FileLoader::getPath("Resources/Shaders/DefaultFragment.glsl"));
     defaultShader = Shader(vertex, fragment);
-    Bitmap *bmp1 = new Bitmap(FileLoader::getPath("Resources/Textures/dog.bmp"));
-    Bitmap *bmp2 = new Bitmap(FileLoader::getPath("Resources/Textures/awesomeface.bmp"));
-    texture1 = Texture2D(GL_RGBA, GL_RGBA, GL_FLOAT, bmp1->originalBitmapArray, bmp1->width, bmp1->height);
-    texture2 = Texture2D(GL_RGBA, GL_RGBA, GL_FLOAT, bmp2->originalBitmapArray, bmp2->width, bmp2->height);
 
+    camera = new Camera(glm::vec3(0, 0, 1), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
+    MeshRenderer *mesh = new MeshRenderer(Transform({0,0,-2}, {0,0,0}, {1,1,1}), "Resources/Meshes/cylinder.obj");
+    MeshRenderer *mesh1 = new MeshRenderer(Transform({3,0,-2}, {0,0,0}, {1.2,1,1}), "Resources/Meshes/cylinder.obj");
 
-    float vertices[] = {
-            // positions          // colors           // texture coords
-            0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // top right
-            0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // bottom right
-            -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom left
-            -0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f  // top left
-    };
-    unsigned int indices[] = {
-            0, 1, 3, // first triangle
-            1, 2, 3  // second triangle
-    };
-    unsigned int VBO, EBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-
-    glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    // position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *) 0);
-    glEnableVertexAttribArray(0);
-    // color attribute
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *) (3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    // texture coord attribute
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *) (6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
 }
 
-void mouseCursor(double x, double y) {
-    mousePosition.x = x;
-    mousePosition.y = width - y;
+void Callbacks::mouseMovement(double x, double y) {
+    GlobalManager::getInstance()->mouseMovement(x, y);
+
 }
 
-void draw() {
+void Callbacks::keyboard(int key, int scancode, int action, int mods) {
+    GlobalManager::getInstance()->keyboard(key, scancode, action, mods);
+}
 
+void Callbacks::mouseButton(int button, int action, int modifier) {
+    GlobalManager::getInstance()->mouseButton(button, action, modifier);
+
+}
+
+void Callbacks::render() {
+    GlobalManager::getInstance()->render();
     ImGui::Begin("Debug", nullptr);
-    ImGui::SliderFloat("Parameter T", &t, 0, 1);
-    ImGui::SliderFloat("Parameter brightness", &brightness, -1, 1);
-    ImGui::SliderFloat("Mouse Threshold", &mouseThreshold, 0, 100);
-    ImGui::SliderFloat("Texture Scale", &textureScale, 0.1, 32);
-    ImGui::LabelText("Mouse Position x", std::to_string(mousePosition.x).c_str());
-    ImGui::LabelText("Mouse Position y", std::to_string(mousePosition.y).c_str());
+    ImGui::LabelText("Mouse Position x", std::to_string(GlobalManager::getInstance()->mousePosition.x).c_str());
+    ImGui::LabelText("Mouse Position y", std::to_string(GlobalManager::getInstance()->mousePosition.y).c_str());
     ImGui::End();
-    defaultShader.activateShader();
-    defaultShader.setUniform("t", t);
-    defaultShader.setUniform("pixelSize", glm::vec2(1.0 / texture1.width, 1.0 / texture1.height));
-    defaultShader.setUniform("textureSize", glm::vec2( texture1.width,texture1.height));
-    defaultShader.setUniform("scaleSize", glm::vec2( texture1.width * textureScale,texture1.height * textureScale));
-    defaultShader.setUniform("brightness", brightness);
-    defaultShader.setUniform("mousePosition", mousePosition);
-    defaultShader.setUniform("mouseThreshold", mouseThreshold);
-    defaultShader.setUniform("texture1", 0);
-    defaultShader.setUniform("texture2", 1);
-    texture1.activateTexture(0);
-    texture2.activateTexture(1);
-    glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
 
 int main(void) {
-    auto window = GraphicsLibrary::init(width, height, "Backend");
+    auto window = GraphicsLibrary::init(WIDTH, HEIGHT, "OpenGlBase");
     init();
     while (!glfwWindowShouldClose(window)) {
-
         GraphicsLibrary::render(window);
-
     }
 
     glfwTerminate();

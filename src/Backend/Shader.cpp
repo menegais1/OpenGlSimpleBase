@@ -111,7 +111,7 @@ void Shader::setUniform(int location, glm::mat4x4 value) {
     int cont = 0;
     for (int l = 0; l < 4; ++l) {
         for (int c = 0; c < 4; ++c) {
-            values[cont++] = value[l][c];
+            values[cont++] = value[c][l];
         }
     }
     glUniformMatrix4fv(location, 1, true, values);

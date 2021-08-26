@@ -2,9 +2,9 @@
 // Created by menegais1 on 01/08/2020.
 //
 
-#include "../IMGui/imgui.h"
-#include "../IMGui/imgui_impl_glfw.h"
-#include "../IMGui/imgui_impl_opengl3.h"
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -69,6 +69,9 @@ GLFWwindow *GraphicsLibrary::init(int width, int height, std::string title) {
     glfwSwapInterval(0);
     setupIMGui(window);
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
     return window;
 }
 
@@ -77,27 +80,26 @@ void GraphicsLibrary::framebuffer_size_callback(GLFWwindow *window, int width, i
 }
 
 void GraphicsLibrary::keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-
+    Callbacks::keyboard(key, scancode, action, mods);
 }
 
 void GraphicsLibrary::cursorPosCallback(GLFWwindow *window, double xpos, double ypos) {
-    mouseCursor(xpos,ypos);
+    Callbacks::mouseMovement(xpos, ypos);
 }
 
 void GraphicsLibrary::mouseButtonCallback(GLFWwindow *window, int button, int action, int modifier) {
-
+    Callbacks::mouseButton(button, action, modifier);
 }
 
 void GraphicsLibrary::render(GLFWwindow *window) {
     glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    draw();
+    Callbacks::render();
 
     ImGui::Render();
 
@@ -110,7 +112,7 @@ void GraphicsLibrary::render(GLFWwindow *window) {
     glfwPollEvents();
 }
 //
-//void GraphicsLibrary::screenSpaceLine(fvec2 p0, fvec2 p1, fvec4 color) {
+//void GraphicsLibrary::screenSpaceLine(glm::vec2 p0, glm::vec2 p1, fvec4 color) {
 //    unsigned int VBO, VAO;
 //    fvec3 screenCoordinates = fvec3(GlobalManager::getInstance()->screenWidth,
 //                                    GlobalManager::getInstance()->screenWidth, 1);
